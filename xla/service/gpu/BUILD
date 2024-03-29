@@ -393,6 +393,7 @@ cc_library(
         "//xla/service/gpu/runtime:wait_for_streams_thunk",
         "//xla/service/gpu/runtime:while_thunk",
         "//xla/service/llvm_ir:buffer_assignment_util",
+        "//xla/service/llvm_ir:dynamic_update_slice_util",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:kernel_support_library",
         "//xla/service/llvm_ir:llvm_loop",

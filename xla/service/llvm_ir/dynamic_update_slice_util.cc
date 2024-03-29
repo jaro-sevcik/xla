@@ -192,6 +192,34 @@ Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
       output_array, /*launch_dimensions=*/nullptr, name, b);
 }
 
+Status EmitParallelDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
+                                     const IrArray& output_array,
+                                     absl::string_view name,
+                                     const gpu::LaunchDimensions& launch_dimensions,
+                                     llvm::IRBuilder<>* b) {
+  VLOG(2) << "EmitParallelDynamicUpdateSliceInPlace for " << name;
+
+  // No need to use operand_arrays[0], the input array of the
+  // dynamic-update-slice, because we know it aliases the op's output.
+  IrArray update_array = operand_arrays[1];
+  IrArray start_indices_array = operand_arrays[2];
+  Shape output_shape = output_array.GetShape();
+  Shape update_shape = update_array.GetShape();
+
+  IndexGenerator start_indices_generator = [&](int64_t index) {
+    return operand_arrays[2 + index].EmitReadArrayElement(
+        IrArray::Index(b->getInt64Ty()), b);
+  };
+  ElementGenerator update_array_generator = [&](const IrArray::Index& index) {
+    return update_array.EmitReadArrayElement(index, b);
+  };
+
+  bool is_signed = ShapeUtil::ElementIsSigned(start_indices_array.GetShape());
+  return EmitDynamicUpdateSliceInPlaceImpl(
+      update_shape, start_indices_generator, is_signed, update_array_generator,
+      output_array, &launch_dimensions, name, b);
+}
+
 // Shared implementation for EmitFusedDynamicUpdateSliceInPlace and
 // EmitParallelFusedDynamicUpdateSliceInPlace.
 //

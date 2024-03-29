@@ -184,10 +184,15 @@ class IrEmitterUnnested : public IrEmitter {
                              std::optional<bool> use_global_device_ids);
 
   absl::Status EmitNcclAsyncDone(Thunk::Kind kind, const HloInstruction* instr);
+  absl::Status EmitNcclAsyncDone(const HloInstruction* instr);
 
   absl::Status EmitWaitForStreamsThunk(const HloInstruction* inst,
                                        GpuBackendConfig& gpu_config,
                                        bool is_async_done);
+
+  absl::Status EmitDynamicUpdateSliceThunk(const HloDynamicUpdateSliceInstruction* instr);
+  absl::Status EmitDynamicSliceThunk(const HloDynamicSliceInstruction* instr);
+
   template <typename ThunkType>
   absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
 

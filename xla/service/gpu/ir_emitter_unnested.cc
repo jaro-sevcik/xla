@@ -141,6 +141,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/service/gpu/triton_call.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
+#include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
@@ -2364,6 +2365,72 @@ absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
   return absl::OkStatus();
 }
 
+absl::Status IrEmitterUnnested::EmitDynamicUpdateSliceThunk(const HloDynamicUpdateSliceInstruction* instr) {
+  const Shape& update_shape = instr->operand(1)->shape();
+
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      update_shape, ir_emitter_context_->gpu_device_info());
+  std::vector<llvm_ir::IrArray> inputs;
+  std::vector<llvm_ir::IrArray> outputs;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(inputs, outputs),
+      BuildKernelThunkForNonFusionOp(instr, instr->operands(), launch_dimensions));
+
+  // The instruction's inputs and outputs are the kernel's inputs. Let's check that.
+  CHECK_EQ(inputs.size(), instr->operand_count() + 1);
+  CHECK_EQ(outputs.size(), 0);
+
+  std::string name = llvm_ir::IrName(instr, "dynamic_update_slice_host_transfer");
+
+  return EmitParallelDynamicUpdateSliceInPlace(
+    absl::MakeSpan(inputs).subspan(0, instr->operand_count()), inputs[instr->operand_count()],
+    name, launch_dimensions, &b_);
+}
+
+absl::Status IrEmitterUnnested::EmitDynamicSliceThunk(const HloDynamicSliceInstruction* instr) {
+  const Shape& dest_shape = instr->shape();
+
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      dest_shape, ir_emitter_context_->gpu_device_info());
+  std::vector<llvm_ir::IrArray> inputs;
+  std::vector<llvm_ir::IrArray> outputs;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(inputs, outputs),
+      BuildKernelThunkForNonFusionOp(instr, instr->operands(), launch_dimensions));
+
+  // The instruction's inputs and outputs are the kernel's inputs. Let's check that.
+  CHECK_EQ(inputs.size(), instr->operand_count() + 1);
+  CHECK_EQ(outputs.size(), 0);
+
+  std::string name = llvm_ir::IrName(instr, "dynamic_slice_host_transfer");
+
+  // Call the elemental emitter to produce code for the dynamic-slice instruction.
+  absl::flat_hash_map<const HloInstruction*, llvm_ir::ElementGenerator> indexed_generators;
+
+  // Prepare the mapping of instruction inputs to element generators from
+  // the input ir arrays.
+  for (int i = 0; i < instr->operand_count(); i++) {
+    auto instruction = instr->operand(i);
+    auto generator = [&, inputs, i](llvm_ir::IrArray::Index index) {
+        return inputs[i].EmitReadArrayElement(index, &b_);
+    };
+    indexed_generators[instruction] = std::move(generator);
+  }
+
+  // Get the element generator for dynamic-slice.
+  llvm_ir::ElementGenerator generator = elemental_emitter_.MakeElementGenerator(
+      instr, indexed_generators);
+
+  llvm::Type* index_type =
+      GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
+
+  // Generate the elements of dynamic-slice in a parallel loop.
+  int unroll_factor = 1;
+  return ParallelLoopEmitter(generator, absl::MakeSpan(inputs).subspan(instr->operand_count()), launch_dimensions, &b_,
+                             {unroll_factor})
+      .EmitLoop(name, index_type);
+}
+
 absl::Status IrEmitterUnnested::EmitWaitForStreamsThunk(
     const HloInstruction* inst, GpuBackendConfig& gpu_config,
     bool is_async_done) {
@@ -2460,6 +2527,7 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
                               needed_operands));
 
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
+
 
   llvm::Function* kernel;
   std::vector<llvm_ir::IrArray> inputs;
@@ -2794,6 +2862,14 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           return EmitNcclAsyncDone(Thunk::kNcclAllToAllDone, instr);
         case HloOpcode::kCollectiveBroadcast:
           return EmitNcclAsyncDone(Thunk::kNcclCollectiveBroadcastDone, instr);
+        case HloOpcode::kDynamicUpdateSlice: {
+          // TODO(jarin)
+          return absl::OkStatus();
+        }
+        case HloOpcode::kDynamicSlice: {
+          // TODO(jarin)
+          return absl::OkStatus();
+        }
         default: {
           if (wrapped->has_backend_config()) {
             TF_ASSIGN_OR_RETURN(
@@ -2835,6 +2911,12 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
                                HloCollectiveBroadcastInstruction>(
               Thunk::kNcclCollectiveBroadcast, instr, collective_broadcast,
               std::nullopt);
+        }
+        case HloOpcode::kDynamicUpdateSlice: {
+          return EmitDynamicUpdateSliceThunk(DynCast<HloDynamicUpdateSliceInstruction>(wrapped));
+        }
+        case HloOpcode::kDynamicSlice: {
+          return EmitDynamicSliceThunk(DynCast<HloDynamicSliceInstruction>(wrapped));
         }
         default: {
           if (wrapped->has_backend_config()) {

@@ -68,6 +68,11 @@ Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
                                      const IrArray& output_array,
                                      absl::string_view name,
                                      llvm::IRBuilder<>* b);
+Status EmitParallelDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
+                                     const IrArray& output_array,
+                                     absl::string_view name,
+                                     const gpu::LaunchDimensions& launch_dimensions,
+                                     llvm::IRBuilder<>* b);
 
 // Given a loop-fusion node whose root is a dynamic-update-slice op whose
 // array-to-be-updated and output share the same buffer slice, emits
