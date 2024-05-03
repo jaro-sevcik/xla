@@ -246,6 +246,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/base64.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
@@ -409,8 +410,10 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
 
   static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
   FromString(const std::string& serialized) {
+    std::string decoded;
+    TF_RETURN_IF_ERROR(tsl::Base64Decode(serialized, &decoded));
     CompilationResultProto proto;
-    if (!proto.ParseFromString(serialized)) {
+    if (!proto.ParseFromString(decoded)) {
       return Internal(
           "Failed to parse serialized GpuThunkAotCompilationResult.");
     }
@@ -423,7 +426,9 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   }
 
   absl::StatusOr<std::string> SerializeAsString() const override {
-    return proto_.SerializeAsString();
+    std::string encoded;
+    TF_RETURN_IF_ERROR(tsl::Base64Encode(proto_.SerializeAsString(), &encoded));
+    return encoded;
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
