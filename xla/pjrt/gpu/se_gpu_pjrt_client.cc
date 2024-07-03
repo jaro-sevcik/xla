@@ -1155,6 +1155,21 @@ StreamExecutorGpuHbmMemorySpace::StreamExecutorGpuHbmMemorySpace(
     int id, PjRtDevice* device)
     : PjRtStreamExecutorMemorySpace(id, device, kKind, kKindId) {}
 
+void ParallelAllocatorWarmUp(StreamExecutorGpuClient* client,
+                             const GpuAllocatorConfig& allocator_config) {
+  if (!allocator_config.preallocate ||
+      client->addressable_device_count() <= 1) {
+    return;
+  }
+  for (int i = 0; i < client->addressable_device_count(); ++i) {
+    auto preallocate_fn = [allocator = client->allocator(), i]() {
+      // Allocate a bit of memory to preallocate.
+      allocator->Allocate(i, 1);
+    };
+    client->thread_pool()->Schedule(preallocate_fn);
+  }
+}
+
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options) {
 #if TENSORFLOW_USE_ROCM
@@ -1198,11 +1213,15 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   auto gpu_topology = std::shared_ptr<const GpuTopology>(
       GpuTopology::FromProto(device_topology_pair.second));
 
-  return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
+  auto client = std::make_unique<StreamExecutorGpuClient>(
       pjrt_platform_name, xla_client, std::move(device_topology_pair.first),
       options.node_id, std::move(allocator), std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers, std::move(gpu_run_options),
-      std::move(kv_store), std::move(gpu_topology)));
+      std::move(kv_store), std::move(gpu_topology));
+
+  ParallelAllocatorWarmUp(client.get(), options.allocator_config);
+
+  return std::unique_ptr<PjRtClient>(std::move(client));
 }
 
 absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
