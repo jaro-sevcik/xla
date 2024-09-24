@@ -318,6 +318,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_v100",
+        "gpu_h100",
         "gpu_amd_any",
     ],
     deps = [
