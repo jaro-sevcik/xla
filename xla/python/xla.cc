@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt_proxy/client/py_module.h"
+#include "xla/python/ifrt_proxy/server/py_module.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_program.h"
@@ -602,6 +603,7 @@ NB_MODULE(xla_extension, m_nb) {
   // The following uses python bindings for PyClient defined above using
   // pybind11, and hence needs pybind11::module_ (not just nanobind::module_).
   xla::ifrt::proxy::BuildIfrtProxySubmodule(m_nb);
+  xla::ifrt::proxy::BuildIfrtProxyServerSubmodule(m_nb);
 
   nb::class_<tsl::PreemptionSyncManager> preemption_sync_manager(
       m_nb, "PreemptionSyncManager");
