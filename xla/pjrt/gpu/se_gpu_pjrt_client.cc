@@ -518,7 +518,7 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
         memory_space.get());
     owned_memory_spaces_.push_back(std::move(memory_space));
-    const size_t basePinnedId = devices_count();
+    const size_t basePinnedId = device_count();
     auto pinned = std::make_unique<PinnedHostMemorySpace>(basePinnedId + id, device);
     tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
         pinned.get());

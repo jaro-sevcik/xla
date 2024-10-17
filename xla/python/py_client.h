@@ -100,12 +100,12 @@ class PyClient {
     // changed the name PJRT reports for GPU platforms to "cuda" or "rocm", but
     // we haven't yet updated JAX clients that expect "gpu". Migrate users and
     // remove this code.
-    if (ifrt_client_->platform_name() == "cuda" ||
-        ifrt_client_->platform_name() == "rocm") {
-      return "gpu";
-    } else {
+    // if (ifrt_client_->platform_name() == "cuda" ||
+    //     ifrt_client_->platform_name() == "rocm") {
+    //   return "gpu";
+    // } else {
       return ifrt_client_->platform_name();
-    }
+    // }
   }
   std::string_view platform_version() const {
     return ifrt_client_->platform_version();
